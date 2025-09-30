@@ -1,12 +1,5 @@
 package com.vanniktech.android.junit.jacoco
 
-import com.android.build.gradle.AppExtension
-import com.android.build.gradle.LibraryExtension
-import com.android.build.gradle.TestExtension
-import com.android.build.gradle.api.BaseVariant
-import com.android.build.gradle.internal.coverage.JacocoOptions
-import com.android.builder.model.BuildType
-import groovy.mock.interceptor.MockFor
 import org.gradle.api.Project
 import org.gradle.testfixtures.ProjectBuilder
 
@@ -42,57 +35,23 @@ final class ProjectHelper {
             case ProjectType.ANDROID_DYNAMIC_FEATURE:
                 def name = "android app ${projectType.name()}"
                 project = builder.withName(name).build()
-                def androidMock = new MockFor(AppExtension)
-                def buildTypesMock = ["debug", "release"].collect { bt ->
-                    def type = new MockFor(BuildType)
-                    type.metaClass.getName = { bt }
-                    type.metaClass.testCoverageEnabled = true
-                    type
-                }
-                androidMock.metaClass.getBuildTypes = { buildTypesMock }
-                def appVariants = buildTypesMock.collect { bt ->
-                    def variant = new MockFor(BaseVariant)
-                    variant.metaClass.getFlavorName = { null }
-                    variant.metaClass.getBuildType = { bt }
-                    variant
-                }
-                androidMock.metaClass.getApplicationVariants = { appVariants }
-                androidMock.metaClass.testOptions = null
-                androidMock.metaClass.jacoco = mockJacocoOptions()
+                def androidMock = createMockAppExtension()
                 project.metaClass.android = androidMock
                 // mock .all{ } function from android gradle lib with standard groovy .each{ }
-                project.android.applicationVariants.metaClass.all = { delegate.each(it) }
+                androidMock.applicationVariants.metaClass.all = { delegate.each(it) }
                 break
             case ProjectType.ANDROID_LIBRARY:
             case ProjectType.ANDROID_KOTLIN_MULTIPLATFORM:
                 def name = "android library ${projectType.name()}"
                 project = builder.withName(name).build()
-                def androidMock = new MockFor(LibraryExtension)
-                def buildTypesMock = ["debug", "release"].collect { bt ->
-                    def type = new MockFor(BuildType)
-                    type.metaClass.getName = { bt }
-                    type.metaClass.testCoverageEnabled = true
-                    type
-                }
-                androidMock.metaClass.getBuildTypes = { buildTypesMock }
-                def appVariants = buildTypesMock.collect { bt ->
-                    def variant = new MockFor(BaseVariant)
-                    variant.metaClass.getFlavorName = { null }
-                    variant.metaClass.getBuildType = { bt }
-                    variant
-                }
-                androidMock.metaClass.getLibraryVariants = { appVariants }
-                androidMock.metaClass.testOptions = null
-                androidMock.metaClass.jacoco = mockJacocoOptions()
+                def androidMock = createMockLibraryExtension()
                 project.metaClass.android = androidMock
                 // mock .all{ } function from android gradle lib with standard groovy .each{ }
-                project.android.libraryVariants.metaClass.all = { delegate.each(it) }
+                androidMock.libraryVariants.metaClass.all = { delegate.each(it) }
                 break
             case ProjectType.ANDROID_TEST:
                 project = builder.withName('android test').build()
-                def androidMock = new MockFor(TestExtension)
-                androidMock.metaClass.testOptions = null
-                androidMock.metaClass.jacoco = mockJacocoOptions()
+                def androidMock = createMockTestExtension()
                 project.metaClass.android = androidMock
                 break
         }
@@ -106,10 +65,78 @@ final class ProjectHelper {
         }
     }
 
-    private static def mockJacocoOptions(){
-        def options = new MockFor(JacocoOptions)
-        options.metaClass.version = '7.9.0'
-        return options
+    private static def createMockAppExtension() {
+        def buildTypes = ["debug", "release"].collect { bt ->
+            [
+                getName            : { -> bt },
+                name               : bt,
+                testCoverageEnabled: true
+            ]
+        }
+
+        def variants = buildTypes.collect { bt ->
+            [
+                getFlavorName: { -> null },
+                getBuildType : { -> bt }
+            ]
+        }
+
+        def androidMock = [
+            getBuildTypes         : {
+                return buildTypes
+            },
+            getApplicationVariants: {
+                return variants
+            },
+            applicationVariants   : variants,
+            testOptions           : null,
+            jacoco                : createMockJacocoOptions()
+        ]
+        return androidMock
+    }
+
+    private static def createMockLibraryExtension() {
+        def buildTypes = ["debug", "release"].collect { bt ->
+            [
+                getName            : { -> bt },
+                name               : bt,
+                testCoverageEnabled: true
+            ]
+        }
+
+        def variants = buildTypes.collect { bt ->
+            [
+                getFlavorName: { -> null },
+                getBuildType : { -> bt }
+            ]
+        }
+
+        def androidMock = [
+            getBuildTypes     : {
+                return buildTypes
+            },
+            getLibraryVariants: {
+                return variants
+            },
+            libraryVariants   : variants,
+            testOptions       : null,
+            jacoco            : createMockJacocoOptions()
+        ]
+        return androidMock
+    }
+
+    private static def createMockTestExtension() {
+        def androidMock = [
+            testOptions: null,
+            jacoco     : createMockJacocoOptions()
+        ]
+        return androidMock
+    }
+
+    private static def createMockJacocoOptions() {
+        return [
+            version: '7.9.0'
+        ]
     }
 
     /** Adds flavors to project, only for Android based projects */
@@ -119,34 +146,36 @@ final class ProjectHelper {
         }
 
         def customFlavors = [
-                red : [applicationId: 'com.example.red'],
-                blue: [applicationId: 'com.example.blue']
+            red : [applicationId: 'com.example.red'],
+            blue: [applicationId: 'com.example.blue']
         ]
 
         def variants = customFlavors.collect { flavorName, config ->
-            project.android.buildTypes.collect { buildType ->
-                def variant = new MockFor(BaseVariant)
-                variant.metaClass.getBuildType = {
-                    def type = new MockFor(BuildType)
-                    type.metaClass.getName = { buildType.name }
-                    type.metaClass.testCoverageEnabled = true
-                    type
-                }
-                variant.metaClass.getFlavorName = { flavorName }
-                variant.metaClass.getApplicationId = { config.applicationId }
-                variant
+            def android = project.android ?: project.metaClass.android
+            android.buildTypes.collect { buildType ->
+                [
+                    getBuildType    : {
+                        return [
+                            getName            : { -> buildType.name },
+                            name               : buildType.name,
+                            testCoverageEnabled: true
+                        ]
+                    },
+                    getFlavorName   : { -> flavorName },
+                    getApplicationId: { -> config.applicationId }
+                ]
             }
         }.flatten()
 
         switch (projectType) {
             case ProjectType.ANDROID_APPLICATION:
-                project.android.metaClass.applicationVariants = variants
+                project.android.applicationVariants = variants
                 // mock .all{ } function from android gradle lib with standard groovy .each{ }
                 project.android.applicationVariants.metaClass.all = { delegate.each(it) }
                 break
             case ProjectType.ANDROID_LIBRARY:
             case ProjectType.ANDROID_DYNAMIC_FEATURE:
-                project.android.metaClass.libraryVariants = variants
+                project.android.libraryVariants = variants
                 // mock .all{ } function from android gradle lib with standard groovy .each{ }
                 project.android.libraryVariants.metaClass.all = { delegate.each(it) }
                 break
