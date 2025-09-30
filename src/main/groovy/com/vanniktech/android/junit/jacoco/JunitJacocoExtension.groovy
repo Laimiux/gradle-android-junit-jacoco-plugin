@@ -26,7 +26,7 @@ class JunitJacocoExtension {
       '**/R2.class', // ButterKnife Gradle Plugin.
       '**/R$*.class',
       '**/R2$*.class', // ButterKnife Gradle Plugin.
-      '**/*$$*',
+      '**/*$*$*',
       '**/*$ViewInjector*.*', // Older ButterKnife Versions.
       '**/*$ViewBinder*.*', // Older ButterKnife Versions.
       '**/*_ViewBinding*.*', // Newer ButterKnife Versions.

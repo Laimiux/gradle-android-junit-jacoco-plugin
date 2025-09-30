@@ -1,8 +1,8 @@
 package com.vanniktech.android.junit.jacoco
 
-import com.android.build.gradle.api.BaseVariant
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.testing.Test
 import org.gradle.testing.jacoco.tasks.JacocoReport
 
@@ -14,7 +14,7 @@ class GenerationPlugin implements Plugin<Project> {
         final def hasSubProjects = rootProject.subprojects.size() > 0
 
         if (hasSubProjects) {
-            final def JacocoReport mergedReportTask = addJacocoMergeToRootProject(rootProject, rootProject.junitJacoco)
+            final def TaskProvider<JacocoReport> mergedReportTask = addJacocoMergeToRootProject(rootProject, rootProject.junitJacoco)
 
             rootProject.subprojects { subProject ->
                 afterEvaluate {
@@ -32,10 +32,20 @@ class GenerationPlugin implements Plugin<Project> {
     }
 
     protected static boolean addJacoco(final Project subProject, final JunitJacocoExtension extension) {
-        return addJacoco(subProject, extension, null)
+        return addJacoco(subProject, extension, (TaskProvider<JacocoReport>) null)
     }
 
     protected static boolean addJacoco(final Project subProject, final JunitJacocoExtension extension, JacocoReport mergedReportTask) {
+        // Convert JacocoReport to TaskProvider for backward compatibility with tests
+        if (mergedReportTask != null) {
+            // Get the project and find the TaskProvider for this task
+            def taskProvider = mergedReportTask.project.tasks.named(mergedReportTask.name)
+            return addJacoco(subProject, extension, taskProvider)
+        }
+        return addJacoco(subProject, extension, (TaskProvider<JacocoReport>) null)
+    }
+
+    protected static boolean addJacoco(final Project subProject, final JunitJacocoExtension extension, TaskProvider<JacocoReport> mergedReportTask) {
         if (!shouldIgnore(subProject, extension)) {
             if (isAndroidProject(subProject)) {
                 return addJacocoAndroid(subProject, extension, mergedReportTask)
@@ -47,12 +57,10 @@ class GenerationPlugin implements Plugin<Project> {
         return false
     }
 
-    private static boolean addJacocoJava(final Project subProject, final JunitJacocoExtension extension, JacocoReport mergedReportTask) {
+    private static boolean addJacocoJava(final Project subProject, final JunitJacocoExtension extension, TaskProvider<JacocoReport> mergedReportTask) {
         subProject.plugins.apply('jacoco')
 
-        subProject.jacoco {
-            toolVersion extension.jacocoVersion
-        }
+        subProject.jacoco.toolVersion = extension.jacocoVersion
 
         subProject.jacocoTestReport {
             dependsOn 'test'
@@ -67,7 +75,7 @@ class GenerationPlugin implements Plugin<Project> {
             }
 
             getClassDirectories().from(subProject.fileTree(
-                    dir: subProject.buildDir,
+                    dir: getBuildDir(subProject),
                     includes: ['**/classes/**/main/**'],
                     excludes: getExcludes(extension)
             ))
@@ -83,16 +91,18 @@ class GenerationPlugin implements Plugin<Project> {
             getAdditionalSourceDirs().from(subProject.files(coverageSourceDirs))
             getSourceDirectories().from(subProject.files(coverageSourceDirs))
             if (isKotlinMultiplatform(subProject)) {
-                getExecutionData().from(subProject.files(subProject.files("${subProject.buildDir}/jacoco/jvmTest.exec")))
+                getExecutionData().from(subProject.files("${getBuildDir(subProject)}/jacoco/jvmTest.exec"))
             } else {
-                getExecutionData().from(subProject.files(subProject.files("${subProject.buildDir}/jacoco/test.exec")))
+                getExecutionData().from(subProject.files("${getBuildDir(subProject)}/jacoco/test.exec"))
             }
 
             if (mergedReportTask != null) {
-                mergedReportTask.executionData.setFrom(executionData.files + mergedReportTask.executionData.files)
-                mergedReportTask.classDirectories.setFrom(classDirectories.getFrom() + mergedReportTask.classDirectories.getFrom())
-                mergedReportTask.additionalSourceDirs.setFrom(additionalSourceDirs.getFrom() + mergedReportTask.additionalSourceDirs.getFrom())
-                mergedReportTask.sourceDirectories.setFrom(sourceDirectories.getFrom() + mergedReportTask.sourceDirectories.getFrom())
+                mergedReportTask.configure { JacocoReport task ->
+                    task.executionData.setFrom(executionData.files + task.executionData.files)
+                    task.classDirectories.setFrom(classDirectories.getFrom() + task.classDirectories.getFrom())
+                    task.additionalSourceDirs.setFrom(additionalSourceDirs.getFrom() + task.additionalSourceDirs.getFrom())
+                    task.sourceDirectories.setFrom(sourceDirectories.getFrom() + task.sourceDirectories.getFrom())
+                }
             }
         }
 
@@ -100,12 +110,10 @@ class GenerationPlugin implements Plugin<Project> {
         return true
     }
 
-    private static boolean addJacocoAndroid(final Project subProject, final JunitJacocoExtension extension, JacocoReport mergedReportTask) {
+    private static boolean addJacocoAndroid(final Project subProject, final JunitJacocoExtension extension, TaskProvider<JacocoReport> mergedReportTask) {
         subProject.plugins.apply('jacoco')
 
-        subProject.jacoco {
-            toolVersion extension.jacocoVersion
-        }
+        subProject.jacoco.toolVersion = extension.jacocoVersion
 
         subProject.tasks.withType(Test).configureEach {
             it.jacoco.includeNoLocationClasses = extension.includeNoLocationClasses
@@ -113,7 +121,7 @@ class GenerationPlugin implements Plugin<Project> {
 
         subProject.android.jacoco.version = extension.jacocoVersion
 
-        Collection<BaseVariant> variants = []
+        Collection variants = []
         if (isAndroidApplication(subProject) || isAndroidDynamicFeature(subProject)) {
             variants = subProject.android.applicationVariants
         } else if (isAndroidLibrary(subProject)) {
@@ -156,17 +164,17 @@ class GenerationPlugin implements Plugin<Project> {
     }
 
     private static void addJacocoTask(final boolean combined, final Project subProject, final JunitJacocoExtension extension,
-                                      JacocoReport mergedReportTask, final String taskName,
+                                      TaskProvider<JacocoReport> mergedReportTask, final String taskName,
                                       final String jvmTestTaskName, final String instrumentationTestTaskName, final String sourceName,
                                       final String sourcePath, final String productFlavorName, final String buildTypeName) {
         def destinationDir
         if (combined) {
-            destinationDir = "${subProject.buildDir}/reports/jacocoCombined"
+            destinationDir = "${getBuildDir(subProject)}/reports/jacocoCombined"
         } else {
-            destinationDir = "${subProject.buildDir}/reports/jacoco"
+            destinationDir = "${getBuildDir(subProject)}/reports/jacoco"
         }
 
-        subProject.task(taskName, type: JacocoReport) {
+        subProject.tasks.register(taskName, JacocoReport) {
             group = 'Reporting'
             description = "Generate Jacoco coverage reports after running ${sourceName} tests."
 
@@ -205,7 +213,7 @@ class GenerationPlugin implements Plugin<Project> {
             }
 
             getClassDirectories().from(subProject.fileTree(
-                dir: subProject.buildDir,
+                dir: getBuildDir(subProject),
                 includes: classPaths,
                 excludes: getExcludes(extension)
             ))
@@ -233,11 +241,11 @@ class GenerationPlugin implements Plugin<Project> {
 
             getAdditionalSourceDirs().from(subProject.files(coverageSourceDirs))
             getSourceDirectories().from(subProject.files(coverageSourceDirs))
-            getExecutionData().from(subProject.files("${subProject.buildDir}/jacoco/${jvmTestTaskName}.exec"))
+            getExecutionData().from(subProject.files("${getBuildDir(subProject)}/jacoco/${jvmTestTaskName}.exec"))
 
             if (combined) {
                 // add instrumentation coverage execution data
-                def codeCoverageDirs = subProject.fileTree("${subProject.buildDir}/outputs/code_coverage").matching {
+                def codeCoverageDirs = subProject.fileTree("${getBuildDir(subProject)}/outputs/code_coverage").matching {
                     include "**/*.ec"
                 }
                 executionData.setFrom(codeCoverageDirs.files + executionData.files)
@@ -247,41 +255,41 @@ class GenerationPlugin implements Plugin<Project> {
             def addToMergeTask = !combined || extension.includeInstrumentationCoverageInMergedReport
 
             if (mergedReportTask != null && addToMergeTask) {
-                mergedReportTask.executionData.setFrom(executionData.files + mergedReportTask.executionData.files)
-                mergedReportTask.classDirectories.setFrom(classDirectories.getFrom() + mergedReportTask.classDirectories.getFrom())
-                mergedReportTask.additionalSourceDirs.setFrom(additionalSourceDirs.getFrom() + mergedReportTask.additionalSourceDirs.getFrom())
-                mergedReportTask.sourceDirectories.setFrom(sourceDirectories.getFrom() + mergedReportTask.sourceDirectories.getFrom())
+                mergedReportTask.configure { JacocoReport task ->
+                    task.executionData.setFrom(executionData.files + task.executionData.files)
+                    task.classDirectories.setFrom(classDirectories.getFrom() + task.classDirectories.getFrom())
+                    task.additionalSourceDirs.setFrom(additionalSourceDirs.getFrom() + task.additionalSourceDirs.getFrom())
+                    task.sourceDirectories.setFrom(sourceDirectories.getFrom() + task.sourceDirectories.getFrom())
+                }
             }
         }
 
         subProject.check.dependsOn "${taskName}"
     }
 
-    protected static addJacocoMergeToRootProject(final Project project, final JunitJacocoExtension extension) {
+    protected static TaskProvider<JacocoReport> addJacocoMergeToRootProject(final Project project, final JunitJacocoExtension extension) {
         project.plugins.apply('jacoco')
 
         project.afterEvaluate {
             // Apply the Jacoco version after evaluating the project so that the extension could be configured
-            project.jacoco {
-                toolVersion extension.jacocoVersion
-            }
+            project.jacoco.toolVersion = extension.jacocoVersion
         }
 
-        def mergedReportTask = project.task("jacocoTestReportMerged", type: JacocoReport) {
+        def mergedReportTask = project.tasks.register("jacocoTestReportMerged", JacocoReport) {
             executionData project.files().asFileTree // Start with an empty collection.
 
             reports {
                 xml {
                     required = extension.xml.enabled
-                    outputLocation = project.file("${project.buildDir}/reports/jacoco/jacoco.xml")
+                    outputLocation = project.file("${getBuildDir(project)}/reports/jacoco/jacoco.xml")
                 }
                 csv {
                     required = extension.csv.enabled
-                    outputLocation = project.file("${project.buildDir}/reports/jacoco/jacoco.csv")
+                    outputLocation = project.file("${getBuildDir(project)}/reports/jacoco/jacoco.csv")
                 }
                 html {
                     required = extension.html.enabled
-                    outputLocation = project.file("${project.buildDir}/reports/jacoco")
+                    outputLocation = project.file("${getBuildDir(project)}/reports/jacoco")
                 }
             }
 
@@ -294,8 +302,12 @@ class GenerationPlugin implements Plugin<Project> {
         return mergedReportTask
     }
 
+    private static File getBuildDir(final Project project) {
+        return project.layout.buildDirectory.get().asFile
+    }
+
     static List<String> getExcludes(final JunitJacocoExtension extension) {
-        extension.excludes ?: []
+        return extension.excludes != null ? extension.excludes : []
     }
 
     private static boolean isAndroidProject(final Project project) {

@@ -67,17 +67,17 @@ final class ProjectHelper {
 
     private static def createMockAppExtension() {
         def buildTypes = ["debug", "release"].collect { bt ->
-            [
-                getName            : { -> bt },
-                name               : bt,
-                testCoverageEnabled: true
-            ]
+            def buildType = new Expando()
+            buildType.name = bt
+            buildType.testCoverageEnabled = true
+            buildType.getName = { -> bt }
+            return buildType
         }
 
-        def variants = buildTypes.collect { bt ->
+        def variants = buildTypes.collect { buildType ->
             [
                 getFlavorName: { -> null },
-                getBuildType : { -> bt }
+                getBuildType: { -> buildType }
             ]
         }
 
@@ -85,6 +85,7 @@ final class ProjectHelper {
             getBuildTypes         : {
                 return buildTypes
             },
+            buildTypes: buildTypes,
             getApplicationVariants: {
                 return variants
             },
@@ -97,17 +98,17 @@ final class ProjectHelper {
 
     private static def createMockLibraryExtension() {
         def buildTypes = ["debug", "release"].collect { bt ->
-            [
-                getName            : { -> bt },
-                name               : bt,
-                testCoverageEnabled: true
-            ]
+            def buildType = new Expando()
+            buildType.name = bt
+            buildType.testCoverageEnabled = true
+            buildType.getName = { -> bt }
+            return buildType
         }
 
-        def variants = buildTypes.collect { bt ->
+        def variants = buildTypes.collect { buildType ->
             [
                 getFlavorName: { -> null },
-                getBuildType : { -> bt }
+                getBuildType: { -> buildType }
             ]
         }
 
@@ -115,6 +116,7 @@ final class ProjectHelper {
             getBuildTypes     : {
                 return buildTypes
             },
+            buildTypes: buildTypes,
             getLibraryVariants: {
                 return variants
             },
@@ -155,11 +157,7 @@ final class ProjectHelper {
             android.buildTypes.collect { buildType ->
                 [
                     getBuildType    : {
-                        return [
-                            getName            : { -> buildType.name },
-                            name               : buildType.name,
-                            testCoverageEnabled: true
-                        ]
+                        return buildType
                     },
                     getFlavorName   : { -> flavorName },
                     getApplicationId: { -> config.applicationId }
