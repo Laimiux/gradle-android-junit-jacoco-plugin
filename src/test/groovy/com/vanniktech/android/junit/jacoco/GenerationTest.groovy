@@ -213,7 +213,7 @@ class GenerationTest {
     @Test void mergedJacocoReportDoesNotHaveDependencies() {
         def rootProject = ProjectHelper.prepare(ROOT).get()
 
-        def jacocoTestReportMerged = rootProject.tasks.findByName("jacocoTestReportMerged")
+        def jacocoTestReportMerged = rootProject.tasks.named("jacocoTestReportMerged")
 
         assert jacocoTestReportMerged != null
 
@@ -227,7 +227,7 @@ class GenerationTest {
             }
         }
 
-        assert jacocoTestReportMerged.dependsOn.size() == 0
+        assert jacocoTestReportMerged.get().dependsOn.size() == 0
     }
 
     private void assertJacocoAndroidWithFlavors(final Project project) {

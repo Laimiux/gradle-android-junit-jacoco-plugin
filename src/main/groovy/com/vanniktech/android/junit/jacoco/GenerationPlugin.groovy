@@ -14,7 +14,7 @@ class GenerationPlugin implements Plugin<Project> {
         final def hasSubProjects = rootProject.subprojects.size() > 0
 
         if (hasSubProjects) {
-            final def TaskProvider<JacocoReport> mergedReportTask = addJacocoMergeToRootProject(rootProject, rootProject.junitJacoco)
+            final TaskProvider<JacocoReport> mergedReportTask = addJacocoMergeToRootProject(rootProject, rootProject.junitJacoco)
 
             rootProject.subprojects { subProject ->
                 afterEvaluate {
@@ -32,16 +32,6 @@ class GenerationPlugin implements Plugin<Project> {
     }
 
     protected static boolean addJacoco(final Project subProject, final JunitJacocoExtension extension) {
-        return addJacoco(subProject, extension, (TaskProvider<JacocoReport>) null)
-    }
-
-    protected static boolean addJacoco(final Project subProject, final JunitJacocoExtension extension, JacocoReport mergedReportTask) {
-        // Convert JacocoReport to TaskProvider for backward compatibility with tests
-        if (mergedReportTask != null) {
-            // Get the project and find the TaskProvider for this task
-            def taskProvider = mergedReportTask.project.tasks.named(mergedReportTask.name)
-            return addJacoco(subProject, extension, taskProvider)
-        }
         return addJacoco(subProject, extension, (TaskProvider<JacocoReport>) null)
     }
 
