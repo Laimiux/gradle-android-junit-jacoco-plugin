@@ -34,47 +34,6 @@ String propOrEnv(String... names) {
     return result
 }
 
-mavenPublishing {
-  coordinates(GROUP, POM_ARTIFACT_ID, VERSION_NAME)
-
-  // Use custom Artifactory repository instead of Maven Central
-  repositories {
-    maven {
-      name = "artifactory"
-      url = propOrEnv("ARTIFACTORY_URL", "instacart_artifactory_url")
-      credentials {
-        username = propOrEnv("ARTIFACTORY_USERNAME", "instacart_artifactory_username")
-        password = propOrEnv("ARTIFACTORY_PASSWORD", "instacart_artifactory_password")
-      }
-    }
-  }
-
-  pom {
-    name = POM_NAME
-    description = POM_DESCRIPTION
-    inceptionYear = POM_INCEPTION_YEAR
-    url = POM_URL
-    licenses {
-      license {
-        name = POM_LICENCE_NAME
-        url = POM_LICENCE_URL
-        distribution = POM_LICENCE_DIST
-      }
-    }
-    developers {
-      developer {
-        id = POM_DEVELOPER_ID
-        name = POM_DEVELOPER_NAME
-      }
-    }
-    scm {
-      url = POM_SCM_URL
-      connection = POM_SCM_CONNECTION
-      developerConnection = POM_SCM_DEV_CONNECTION
-    }
-  }
-}
-
 gradlePlugin {
   website = POM_URL
   vcsUrl = POM_SCM_URL
