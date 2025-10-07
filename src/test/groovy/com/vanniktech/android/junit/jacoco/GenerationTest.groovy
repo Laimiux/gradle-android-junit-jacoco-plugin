@@ -213,7 +213,7 @@ class GenerationTest {
     @Test void mergedJacocoReportDoesNotHaveDependencies() {
         def rootProject = ProjectHelper.prepare(ROOT).get()
 
-        def jacocoTestReportMerged = rootProject.tasks.findByName("jacocoTestReportMerged")
+        def jacocoTestReportMerged = rootProject.tasks.named("jacocoTestReportMerged").get()
 
         assert jacocoTestReportMerged != null
 
@@ -242,7 +242,7 @@ class GenerationTest {
     }
 
     private void assertTask(final Project project, final String flavor, final String buildType) {
-        final def task = project.tasks.findByName("jacocoTestReport${flavor.capitalize()}${buildType.capitalize()}")
+        final def task = project.tasks.named("jacocoTestReport${flavor.capitalize()}${buildType.capitalize()}").get()
 
         assert task instanceof JacocoReport
 
@@ -297,7 +297,7 @@ class GenerationTest {
             }
 
             assert taskDependsOn(task, "test${flavor.capitalize()}${buildType.capitalize()}UnitTest")
-            assert taskDependsOn(project.tasks.findByName('check'), "jacocoTestReport${flavor.capitalize()}${buildType.capitalize()}")
+            assert taskDependsOn(project.tasks.named('check').get(), "jacocoTestReport${flavor.capitalize()}${buildType.capitalize()}")
         }
     }
 
@@ -306,7 +306,7 @@ class GenerationTest {
 
         assert project.jacoco.toolVersion == '0.8.7'
 
-        final def debugTask = project.tasks.findByName('jacocoTestReportDebug')
+        final def debugTask = project.tasks.named('jacocoTestReportDebug').get()
 
         assert debugTask instanceof JacocoReport
 
@@ -352,10 +352,15 @@ class GenerationTest {
             }
 
             assert taskDependsOn(debugTask, 'testDebugUnitTest')
-            assert taskDependsOn(project.tasks.findByName('check'), 'jacocoTestReportDebug')
+            assert taskDependsOn(project.tasks.named('check').get(), 'jacocoTestReportDebug')
         }
 
-        final def debugTaskCombined = project.tasks.findByName('combinedTestReportDebug')
+        def debugTaskCombined = null
+        try {
+            debugTaskCombined = project.tasks.named('combinedTestReportDebug').get()
+        } catch (Exception ignored) {
+            // Task doesn't exist
+        }
         if (hasCoverage) {
             assert debugTaskCombined instanceof JacocoReport
 
@@ -402,13 +407,13 @@ class GenerationTest {
 
                 assert taskDependsOn(debugTaskCombined, 'testDebugUnitTest')
                 assert taskDependsOn(debugTaskCombined, 'createDebugCoverageReport')
-                assert taskDependsOn(project.tasks.findByName('check'), 'combinedTestReportDebug')
+                assert taskDependsOn(project.tasks.named('check').get(), 'combinedTestReportDebug')
             }
         } else {
             assert debugTaskCombined == null
         }
 
-        final def releaseTask = project.tasks.findByName('jacocoTestReportRelease')
+        final def releaseTask = project.tasks.named('jacocoTestReportRelease').get()
 
         assert releaseTask instanceof JacocoReport
 
@@ -454,10 +459,15 @@ class GenerationTest {
             }
 
             assert taskDependsOn(releaseTask, 'testReleaseUnitTest')
-            assert taskDependsOn(project.tasks.findByName('check'), 'jacocoTestReportRelease')
+            assert taskDependsOn(project.tasks.named('check').get(), 'jacocoTestReportRelease')
         }
 
-        final def releaseTaskCombined = project.tasks.findByName('combinedTestReportRelease')
+        def releaseTaskCombined = null
+        try {
+            releaseTaskCombined = project.tasks.named('combinedTestReportRelease').get()
+        } catch (Exception ignored) {
+            // Task doesn't exist
+        }
 
         if (hasCoverage) {
             assert releaseTaskCombined instanceof JacocoReport
@@ -505,7 +515,7 @@ class GenerationTest {
 
               assert taskDependsOn(releaseTaskCombined, 'testReleaseUnitTest')
                 assert taskDependsOn(releaseTaskCombined, 'createReleaseCoverageReport')
-                assert taskDependsOn(project.tasks.findByName('check'), 'combinedTestReportRelease')
+                assert taskDependsOn(project.tasks.named('check').get(), 'combinedTestReportRelease')
             }
         } else {
             assert releaseTaskCombined == null
@@ -517,7 +527,7 @@ class GenerationTest {
 
         assert project.jacoco.toolVersion == '0.8.7'
 
-        final def task = project.tasks.findByName('jacocoTestReport')
+        final def task = project.tasks.named('jacocoTestReport').get()
 
         assert task instanceof JacocoReport
 
@@ -574,7 +584,7 @@ class GenerationTest {
     @Test void getExcludesDefault() {
         final def excludes = GenerationPlugin.getExcludes(new JunitJacocoExtension())
 
-        assert excludes.size == 20
+        assert excludes.size() == 20
         assert excludes.contains('**/R.class')
         assert excludes.contains('**/R2.class')
         assert excludes.contains('**/R$*.class')
