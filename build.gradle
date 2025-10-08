@@ -85,7 +85,7 @@ dependencies {
   testImplementation 'com.android.tools.build:gradle:8.9.0'
   testImplementation 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.0'
   testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.spockframework:spock-core:2.3-groovy-3.0', { exclude module: "groovy-all" }
+  testImplementation 'org.spockframework:spock-core:2.3-groovy-4.0', { exclude module: "groovy-all" }
   // Use localGroovy()
 
   // https://github.com/gradle/gradle/issues/16774#issuecomment-893493869
