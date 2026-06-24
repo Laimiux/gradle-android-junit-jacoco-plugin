@@ -120,6 +120,9 @@ class GenerationPlugin implements Plugin<Project> {
         def androidComponents = subProject.androidComponents
         androidComponents.onVariants(androidComponents.selector().all()) { variant ->
             def buildTypeName = variant.buildType
+            if (buildTypeName == null) {
+                return
+            }
             def productFlavorName = variant.flavorName ?: ''
 
             def sourceName, sourcePath
@@ -139,12 +142,12 @@ class GenerationPlugin implements Plugin<Project> {
             addJacocoTask(false, subProject, extension, mergedReportTask, jvmTaskName,
                 jvmTestTaskName, instrumentationTestTaskName, sourceName, sourcePath, productFlavorName, buildTypeName)
 
-            // AGP 9 removed the BuildType.testCoverageEnabled signal from the variant API.
-            // Register the combined report when -DTEST_COVERAGE_ENABLED=true is passed, or when
-            // the AGP-generated create<Variant>CoverageReport task already exists.
-            boolean coverageEnabled = System.getProperty('TEST_COVERAGE_ENABLED') == 'true' ||
-                subProject.tasks.findByName(instrumentationTestTaskName) != null
-            if (coverageEnabled) {
+            // Read the per-buildType coverage flag from the DSL extension (still present in AGP 9)
+            // instead of probing for an AGP-registered task — that probe races AGP's own variant
+            // pipeline and almost always returns null at onVariants time. -DTEST_COVERAGE_ENABLED=true
+            // remains as a global override for builds that want coverage on every variant.
+            def buildType = subProject.android.buildTypes.find { it.name == buildTypeName }
+            if (isCoverageEnabled(buildType) || System.getProperty('TEST_COVERAGE_ENABLED') == 'true') {
                 addJacocoTask(true, subProject, extension, mergedReportTask, combinedTaskName,
                     jvmTestTaskName, instrumentationTestTaskName, sourceName, sourcePath, productFlavorName, buildTypeName)
             }
@@ -164,7 +167,7 @@ class GenerationPlugin implements Plugin<Project> {
             destinationDir = "${subProject.buildDir}/reports/jacoco"
         }
 
-        subProject.task(taskName, type: JacocoReport) {
+        subProject.tasks.register(taskName, JacocoReport) {
             group = 'Reporting'
             description = "Generate Jacoco coverage reports after running ${sourceName} tests."
 
@@ -294,6 +297,16 @@ class GenerationPlugin implements Plugin<Project> {
 
     static List<String> getExcludes(final JunitJacocoExtension extension) {
         extension.excludes ?: []
+    }
+
+    // AGP 8 renamed testCoverageEnabled -> enableAndroidTestCoverage; both ship in 8.x and the
+    // legacy alias may be gone in 9.x. Try the new name first, fall back to the legacy one, and
+    // tolerate either being absent so this works against any AGP the consumer brings at runtime.
+    private static boolean isCoverageEnabled(buildType) {
+        if (buildType == null) return false
+        try { if (buildType.enableAndroidTestCoverage) return true } catch (MissingPropertyException ignored) {}
+        try { if (buildType.testCoverageEnabled) return true } catch (MissingPropertyException ignored) {}
+        return false
     }
 
     private static boolean isAndroidProject(final Project project) {
