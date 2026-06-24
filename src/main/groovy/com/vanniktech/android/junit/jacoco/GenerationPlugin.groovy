@@ -1,6 +1,5 @@
 package com.vanniktech.android.junit.jacoco
 
-import com.android.build.gradle.api.BaseVariant
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.tasks.testing.Test
@@ -113,21 +112,15 @@ class GenerationPlugin implements Plugin<Project> {
 
         subProject.android.jacoco.version = extension.jacocoVersion
 
-        Collection<BaseVariant> variants = []
-        if (isAndroidApplication(subProject) || isAndroidDynamicFeature(subProject)) {
-            variants = subProject.android.applicationVariants
-        } else if (isAndroidLibrary(subProject)) {
-            // FeatureExtension extends LibraryExtension
-            variants = subProject.android.libraryVariants
-        } else {
+        if (!(isAndroidApplication(subProject) || isAndroidLibrary(subProject) || isAndroidDynamicFeature(subProject))) {
             // test plugin or something else
             return false
         }
 
-        variants.all { variant ->
-            def productFlavorName = variant.getFlavorName()
-            def buildType = variant.getBuildType()
-            def buildTypeName = buildType.name
+        def androidComponents = subProject.androidComponents
+        androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+            def buildTypeName = variant.buildType
+            def productFlavorName = variant.flavorName ?: ''
 
             def sourceName, sourcePath
             if (!productFlavorName) {
@@ -146,7 +139,12 @@ class GenerationPlugin implements Plugin<Project> {
             addJacocoTask(false, subProject, extension, mergedReportTask, jvmTaskName,
                 jvmTestTaskName, instrumentationTestTaskName, sourceName, sourcePath, productFlavorName, buildTypeName)
 
-            if (buildType.testCoverageEnabled) {
+            // AGP 9 removed the BuildType.testCoverageEnabled signal from the variant API.
+            // Register the combined report when -DTEST_COVERAGE_ENABLED=true is passed, or when
+            // the AGP-generated create<Variant>CoverageReport task already exists.
+            boolean coverageEnabled = System.getProperty('TEST_COVERAGE_ENABLED') == 'true' ||
+                subProject.tasks.findByName(instrumentationTestTaskName) != null
+            if (coverageEnabled) {
                 addJacocoTask(true, subProject, extension, mergedReportTask, combinedTaskName,
                     jvmTestTaskName, instrumentationTestTaskName, sourceName, sourcePath, productFlavorName, buildTypeName)
             }

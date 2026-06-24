@@ -37,8 +37,7 @@ final class ProjectHelper {
                 project = builder.withName(name).build()
                 def androidMock = createMockAppExtension()
                 project.metaClass.android = androidMock
-                // mock .all{ } function from android gradle lib with standard groovy .each{ }
-                androidMock.applicationVariants.metaClass.all = { delegate.each(it) }
+                installMockAndroidComponents(project, androidMock, buildDefaultVariants(androidMock))
                 break
             case ProjectType.ANDROID_LIBRARY:
             case ProjectType.ANDROID_KOTLIN_MULTIPLATFORM:
@@ -46,8 +45,7 @@ final class ProjectHelper {
                 project = builder.withName(name).build()
                 def androidMock = createMockLibraryExtension()
                 project.metaClass.android = androidMock
-                // mock .all{ } function from android gradle lib with standard groovy .each{ }
-                androidMock.libraryVariants.metaClass.all = { delegate.each(it) }
+                installMockAndroidComponents(project, androidMock, buildDefaultVariants(androidMock))
                 break
             case ProjectType.ANDROID_TEST:
                 project = builder.withName('android test').build()
@@ -74,24 +72,11 @@ final class ProjectHelper {
             return buildType
         }
 
-        def variants = buildTypes.collect { buildType ->
-            [
-                getFlavorName: { -> null },
-                getBuildType: { -> buildType }
-            ]
-        }
-
         def androidMock = [
-            getBuildTypes         : {
-                return buildTypes
-            },
-            buildTypes: buildTypes,
-            getApplicationVariants: {
-                return variants
-            },
-            applicationVariants   : variants,
-            testOptions           : null,
-            jacoco                : createMockJacocoOptions()
+            getBuildTypes: { return buildTypes },
+            buildTypes   : buildTypes,
+            testOptions  : null,
+            jacoco       : createMockJacocoOptions()
         ]
         return androidMock
     }
@@ -105,24 +90,11 @@ final class ProjectHelper {
             return buildType
         }
 
-        def variants = buildTypes.collect { buildType ->
-            [
-                getFlavorName: { -> null },
-                getBuildType: { -> buildType }
-            ]
-        }
-
         def androidMock = [
-            getBuildTypes     : {
-                return buildTypes
-            },
-            buildTypes: buildTypes,
-            getLibraryVariants: {
-                return variants
-            },
-            libraryVariants   : variants,
-            testOptions       : null,
-            jacoco            : createMockJacocoOptions()
+            getBuildTypes: { return buildTypes },
+            buildTypes   : buildTypes,
+            testOptions  : null,
+            jacoco       : createMockJacocoOptions()
         ]
         return androidMock
     }
@@ -141,41 +113,69 @@ final class ProjectHelper {
         ]
     }
 
+    private static List buildDefaultVariants(androidMock) {
+        return androidMock.buildTypes.collect { buildType ->
+            new Expando(
+                name: buildType.name,
+                buildType: buildType.name,
+                flavorName: '',
+            )
+        }
+    }
+
+    /**
+     * Installs a fake AGP {@code androidComponents} via metaClass (same pattern used for the
+     * {@code android} mock). Goes through {@code metaClass} rather than {@code extensions.add}
+     * because the real AGP plugin is still applied by {@link ProjectType#pluginNames} and would
+     * collide on the extension name. On iteration the double pre-registers a stub
+     * {@code create<Variant>CoverageReport} task whenever the matching build type has
+     * {@code testCoverageEnabled == true}, mirroring AGP's runtime behavior so the plugin's
+     * {@code tasks.findByName(...)} coverage gate matches.
+     */
+    private static def installMockAndroidComponents(Project project, androidMock, List variants) {
+        def components = new Expando()
+        components.variants = variants
+        components.selector = { -> new Expando(all: { -> 'ALL' }) }
+        components.onVariants = { selector, Closure body ->
+            components.variants.each { variant ->
+                def bt = androidMock.buildTypes.find { it.name == variant.buildType }
+                if (bt?.testCoverageEnabled) {
+                    def taskName = "create${variant.name.capitalize()}CoverageReport"
+                    if (project.tasks.findByName(taskName) == null) {
+                        project.tasks.register(taskName)
+                    }
+                }
+                body.call(variant)
+            }
+        }
+        project.metaClass.androidComponents = components
+        return components
+    }
+
     /** Adds flavors to project, only for Android based projects */
     ProjectHelper withRedBlueFlavors() {
         if (projectType == ProjectType.JAVA || projectType == ProjectType.ROOT) {
             throw new UnsupportedOperationException('Not supported with Java or plain projects')
         }
 
-        def customFlavors = [
-            red : [applicationId: 'com.example.red'],
-            blue: [applicationId: 'com.example.blue']
-        ]
+        def flavorNames = ['red', 'blue']
+        def androidMock = project.android
 
-        def variants = customFlavors.collect { flavorName, config ->
-            def android = project.android ?: project.metaClass.android
-            android.buildTypes.collect { buildType ->
-                [
-                    getBuildType    : {
-                        return buildType
-                    },
-                    getFlavorName   : { -> flavorName },
-                    getApplicationId: { -> config.applicationId }
-                ]
+        def newVariants = flavorNames.collectMany { flavorName ->
+            androidMock.buildTypes.collect { buildType ->
+                new Expando(
+                    name: "${flavorName}${buildType.name.capitalize()}",
+                    buildType: buildType.name,
+                    flavorName: flavorName,
+                )
             }
-        }.flatten()
+        }
 
         switch (projectType) {
             case ProjectType.ANDROID_APPLICATION:
-                project.android.applicationVariants = variants
-                // mock .all{ } function from android gradle lib with standard groovy .each{ }
-                project.android.applicationVariants.metaClass.all = { delegate.each(it) }
-                break
             case ProjectType.ANDROID_LIBRARY:
             case ProjectType.ANDROID_DYNAMIC_FEATURE:
-                project.android.libraryVariants = variants
-                // mock .all{ } function from android gradle lib with standard groovy .each{ }
-                project.android.libraryVariants.metaClass.all = { delegate.each(it) }
+                project.androidComponents.variants = newVariants
                 break
         }
 
