@@ -37,7 +37,7 @@ final class ProjectHelper {
                 project = builder.withName(name).build()
                 def androidMock = createMockAppExtension()
                 project.metaClass.android = androidMock
-                installMockAndroidComponents(project, androidMock, buildDefaultVariants(androidMock))
+                installMockAndroidComponents(project, buildDefaultVariants(androidMock))
                 break
             case ProjectType.ANDROID_LIBRARY:
             case ProjectType.ANDROID_KOTLIN_MULTIPLATFORM:
@@ -45,7 +45,7 @@ final class ProjectHelper {
                 project = builder.withName(name).build()
                 def androidMock = createMockLibraryExtension()
                 project.metaClass.android = androidMock
-                installMockAndroidComponents(project, androidMock, buildDefaultVariants(androidMock))
+                installMockAndroidComponents(project, buildDefaultVariants(androidMock))
                 break
             case ProjectType.ANDROID_TEST:
                 project = builder.withName('android test').build()
@@ -127,26 +127,14 @@ final class ProjectHelper {
      * Installs a fake AGP {@code androidComponents} via metaClass (same pattern used for the
      * {@code android} mock). Goes through {@code metaClass} rather than {@code extensions.add}
      * because the real AGP plugin is still applied by {@link ProjectType#pluginNames} and would
-     * collide on the extension name. On iteration the double pre-registers a stub
-     * {@code create<Variant>CoverageReport} task whenever the matching build type has
-     * {@code testCoverageEnabled == true}, mirroring AGP's runtime behavior so the plugin's
-     * {@code tasks.findByName(...)} coverage gate matches.
+     * collide on the extension name.
      */
-    private static def installMockAndroidComponents(Project project, androidMock, List variants) {
+    private static def installMockAndroidComponents(Project project, List variants) {
         def components = new Expando()
         components.variants = variants
         components.selector = { -> new Expando(all: { -> 'ALL' }) }
         components.onVariants = { selector, Closure body ->
-            components.variants.each { variant ->
-                def bt = androidMock.buildTypes.find { it.name == variant.buildType }
-                if (bt?.testCoverageEnabled) {
-                    def taskName = "create${variant.name.capitalize()}CoverageReport"
-                    if (project.tasks.findByName(taskName) == null) {
-                        project.tasks.register(taskName)
-                    }
-                }
-                body.call(variant)
-            }
+            components.variants.each { variant -> body.call(variant) }
         }
         project.metaClass.androidComponents = components
         return components
